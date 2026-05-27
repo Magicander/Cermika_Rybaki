@@ -230,19 +230,13 @@ main {
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
 }
-.lb-shell {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 1100px;
-  max-height: calc(100vh - 48px);
-  max-height: calc(100dvh - 48px);
-}
 .lb-panel {
   position: relative;
+  z-index: 1;
   display: flex;
   gap: 1px;
   width: 100%;
+  max-width: 1100px;
   max-height: calc(100vh - 48px);
   max-height: calc(100dvh - 48px);
   border-radius: var(--r-lg);
@@ -318,7 +312,7 @@ main {
 .lb-close {
   position: absolute;
   top: 13px; right: 13px;
-  z-index: 20;
+  z-index: 10;
   width: 30px; height: 30px;
   border-radius: 50%;
   background: rgba(255,255,255,0.07);
@@ -326,7 +320,6 @@ main {
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background .18s;
-  -webkit-tap-highlight-color: transparent;
 }
 .lb-close:hover { background: rgba(255,255,255,.14); }
 .lb-close svg { width: 13px; height: 13px; stroke: var(--text-2); stroke-width: 2; }
@@ -334,7 +327,7 @@ main {
 .lb-arrow {
   position: absolute;
   top: 50%; transform: translateY(-50%);
-  z-index: 20;
+  z-index: 10;
   width: 38px; height: 38px;
   border-radius: 50%;
   background: rgba(255,255,255,.07);
@@ -342,12 +335,15 @@ main {
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background .18s;
-  -webkit-tap-highlight-color: transparent;
 }
 .lb-arrow:hover { background: rgba(255,255,255,.14); }
 .lb-arrow svg { width: 15px; height: 15px; stroke: var(--text-2); stroke-width: 2; }
 .lb-arrow.prev { left: 13px; }
 .lb-arrow.next { right: 13px; }
+
+.lb-mobile-bar {
+  display: none;
+}
 
 @media (min-width: 681px) {
   .lb-img-side { min-height: 320px; }
@@ -359,68 +355,90 @@ main {
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
-    inset: auto;
-    left: 0;
-    right: 0;
-    top: var(--lb-top, 0px);
-    height: var(--lb-height, 100dvh);
-    width: 100%;
-  }
-  .lb-shell {
-    max-width: none;
-    max-height: none;
-    height: 100%;
-    width: 100%;
   }
   .lb-panel {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
     max-width: none;
-    max-height: none;
-    min-height: 0;
+    max-height: 100dvh;
+    min-height: 100dvh;
     border-radius: 0;
     border: none;
     box-shadow: none;
     transform: none;
+    background: #000;
   }
   .lb.open .lb-panel { transform: none; }
   .lb-meta { display: none; }
   .lb-img-side {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     width: 100%;
-    height: 100%;
-    padding:
-      calc(var(--lb-controls-top, 72px) + 12px)
-      max(12px, env(safe-area-inset-right, 0px))
-      max(16px, env(safe-area-inset-bottom, 0px))
-      max(12px, env(safe-area-inset-left, 0px));
+    padding: calc(env(safe-area-inset-top, 0px) + 56px) 12px 8px;
   }
   .lb-img-side img {
     max-width: 100%;
     max-height: 100%;
   }
+  .lb-mobile-bar {
+    display: block;
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    background: rgba(17, 17, 17, 0.96);
+    border-top: 1px solid var(--line);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .lb-mobile-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 15px;
+    font-style: italic;
+    color: var(--text);
+    line-height: 1.25;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lb-mobile-date {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.35;
+    margin-bottom: 2px;
+  }
+  .lb-mobile-camera {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .lb-close {
     position: fixed;
-    top: calc(var(--lb-top, 0px) + var(--lb-controls-top, 72px));
-    right: max(14px, calc(env(safe-area-inset-right, 0px) + 10px));
-    width: 44px;
-    height: 44px;
-    background: rgba(0,0,0,0.6);
-    border-color: rgba(255,255,255,0.22);
-    z-index: 600;
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    right: calc(env(safe-area-inset-right, 0px) + 14px);
+    z-index: 520;
+    width: 40px;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.55);
+    border-color: rgba(255, 255, 255, 0.18);
   }
   .lb-arrow {
     position: fixed;
     top: 50%;
     transform: translateY(-50%);
-    width: 44px;
-    height: 44px;
-    background: rgba(0,0,0,0.6);
-    border-color: rgba(255,255,255,0.22);
-    z-index: 600;
+    z-index: 520;
+    width: 40px;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.45);
+    border-color: rgba(255, 255, 255, 0.18);
   }
-  .lb-arrow.prev { left: max(10px, calc(env(safe-area-inset-left, 0px) + 8px)); }
-  .lb-arrow.next { right: max(10px, calc(env(safe-area-inset-right, 0px) + 8px)); }
+  .lb-arrow.prev { left: calc(env(safe-area-inset-left, 0px) + 10px); }
+  .lb-arrow.next { right: calc(env(safe-area-inset-right, 0px) + 10px); }
 }
 </style>
 </head>
@@ -466,7 +484,10 @@ main {
 <!-- ── LIGHTBOX ── -->
 <div class="lb" id="lb" onclick="lbBgClick(event)">
   <div class="lb-bg"></div>
-  <div class="lb-shell">
+  <div class="lb-panel">
+    <div class="lb-img-side"><img id="lbImg" src="" alt=""></div>
+    <div class="lb-meta" id="lbMeta"></div>
+    <div class="lb-mobile-bar" id="lbMobileMeta"></div>
     <button class="lb-close" onclick="closeLb()">
       <svg viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -476,10 +497,6 @@ main {
     <button class="lb-arrow next" onclick="navLb(1)">
       <svg viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
-    <div class="lb-panel">
-      <div class="lb-img-side"><img id="lbImg" src="" alt=""></div>
-      <div class="lb-meta" id="lbMeta"></div>
-    </div>
   </div>
 </div>
 
@@ -889,20 +906,6 @@ function fmtAR(w, h) {
 }
 
 // ── LIGHTBOX ──────────────────────────────────────────────────
-function syncLightboxViewport() {
-  const lb = document.getElementById('lb');
-  if (!lb.classList.contains('open')) return;
-
-  const vv = window.visualViewport;
-  const top = vv ? Math.max(vv.offsetTop, 0) : 0;
-  const height = vv ? vv.height : window.innerHeight;
-  const controlsTop = window.innerWidth <= MOBILE_BREAKPOINT ? 72 : 16;
-
-  lb.style.setProperty('--lb-top', `${top}px`);
-  lb.style.setProperty('--lb-height', `${height}px`);
-  lb.style.setProperty('--lb-controls-top', `${controlsTop}px`);
-}
-
 function openLb(i) {
   curIdx = i;
   const p = sorted[i];
@@ -919,16 +922,22 @@ function openLb(i) {
 
   ensurePhotoExif(p).then(() => renderLbMeta(i));
 
+  renderLbMeta(i);
+
   document.getElementById('lb').classList.add('open');
   document.body.style.overflow = 'hidden';
-  syncLightboxViewport();
 }
 
 function renderLbMeta(i) {
   const p = sorted[i];
   const dateMs = getDate(p);
   const ex = p.exif || {};
-  const cameraLine = [ex.make, ex.model].filter(Boolean).join(' ') || null;
+  const cameraLine = [ex.make, ex.model].filter(Boolean).join(' ') || '—';
+
+  document.getElementById('lbMobileMeta').innerHTML = `
+    <div class="lb-mobile-name">${p.name}</div>
+    <div class="lb-mobile-date">${fmtFull(dateMs)}</div>
+    <div class="lb-mobile-camera">${cameraLine}</div>`;
 
   document.getElementById('lbMeta').innerHTML = `
     <div class="lb-filename">${p.name}</div>
@@ -967,12 +976,8 @@ function renderLbMeta(i) {
 }
 
 function closeLb() {
-  const lb = document.getElementById('lb');
-  lb.classList.remove('open');
+  document.getElementById('lb').classList.remove('open');
   document.body.style.overflow = '';
-  lb.style.removeProperty('--lb-top');
-  lb.style.removeProperty('--lb-height');
-  lb.style.removeProperty('--lb-controls-top');
 }
 function lbBgClick(e) {
   if (e.target === e.currentTarget || e.target.classList.contains('lb-bg')) closeLb();
@@ -991,11 +996,6 @@ document.addEventListener('keydown', e => {
 });
 
 window.addEventListener('load', () => initGallery());
-
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', syncLightboxViewport);
-  window.visualViewport.addEventListener('scroll', syncLightboxViewport);
-}
 
 window.addEventListener('resize', () => {
   if (viewModeManual) return;
