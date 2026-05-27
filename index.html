@@ -217,7 +217,7 @@ main {
   z-index: 500;
   opacity: 0;
   pointer-events: none;
-  transition: opacity .26s;
+  transition: opacity .18s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -226,9 +226,7 @@ main {
 .lb.open { opacity: 1; pointer-events: all; }
 .lb-bg {
   position: absolute; inset: 0;
-  background: rgba(8, 8, 8, 0.48);
-  backdrop-filter: blur(2px) saturate(0.85);
-  -webkit-backdrop-filter: blur(2px) saturate(0.85);
+  background: rgba(8, 8, 8, 0.52);
 }
 .lb-panel {
   position: relative;
@@ -244,7 +242,7 @@ main {
   background: var(--bg-2);
   border: 1px solid var(--line-strong);
   transform: translateY(16px) scale(.97);
-  transition: transform .3s cubic-bezier(.34,1.4,.64,1);
+  transition: transform .22s ease, opacity .18s ease;
   box-shadow: 0 40px 120px rgba(0,0,0,.7);
 }
 .lb.open .lb-panel { transform: translateY(0) scale(1); }
@@ -320,6 +318,8 @@ main {
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background .18s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .lb-close:hover { background: rgba(255,255,255,.14); }
 .lb-close svg { width: 13px; height: 13px; stroke: var(--text-2); stroke-width: 2; }
@@ -373,10 +373,11 @@ main {
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
     background: var(--bg-2);
     overflow: hidden;
-    transform: translateY(14px) scale(0.96);
+    transform: translateY(8px);
+    transition: transform .18s ease, opacity .18s ease;
   }
   .lb.open .lb-panel {
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
   .lb-meta { display: none; }
   .lb-img-side {
@@ -486,16 +487,16 @@ main {
 <div class="lb" id="lb" onclick="lbBgClick(event)">
   <div class="lb-bg"></div>
   <div class="lb-panel">
-    <div class="lb-img-side"><img id="lbImg" src="" alt=""></div>
+    <div class="lb-img-side"><img id="lbImg" src="" alt="" decoding="async"></div>
     <div class="lb-meta" id="lbMeta"></div>
     <div class="lb-mobile-bar" id="lbMobileMeta"></div>
-    <button class="lb-close" onclick="closeLb()">
+    <button type="button" class="lb-close" onclick="event.stopPropagation(); closeLb();">
       <svg viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    <button class="lb-arrow prev" onclick="navLb(-1)">
+    <button type="button" class="lb-arrow prev" onclick="event.stopPropagation(); navLb(-1);">
       <svg viewBox="0 0 24 24" fill="none"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <button class="lb-arrow next" onclick="navLb(1)">
+    <button type="button" class="lb-arrow next" onclick="event.stopPropagation(); navLb(1);">
       <svg viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
   </div>
@@ -704,23 +705,37 @@ async function ensureManifestLoaded() {
   } catch (_) {}
 }
 
-async function ensurePhotoExif(photo) {
-  if (photo.exifLoaded) return;
-  photo.exifLoaded = true;
+async function ensurePhotoExif(photo, signal) {
+  if (photo.exifLoaded || photo.exifLoading) return;
+  photo.exifLoading = true;
   try {
-    const resp = await fetch(photo.src);
-    if (!resp.ok) return;
+    const resp = await fetch(photo.src, {
+      signal,
+      headers: { Range: 'bytes=0-131071' },
+    });
+    if (!resp.ok && resp.status !== 206) return;
     const buf = await resp.arrayBuffer();
+    if (signal?.aborted) return;
     const exif = readExif(buf);
     photo.exif = exif;
-    photo.takenMs = exifDateToMs(exif.dateTimeOriginal || exif.dateTime);
-    const len = resp.headers.get('content-length');
-    if (len) photo.size = parseInt(len, 10);
+    if (!photo.takenMs) {
+      photo.takenMs = exifDateToMs(exif.dateTimeOriginal || exif.dateTime);
+    }
+    const len = resp.headers.get('content-range') || resp.headers.get('content-length');
+    if (len) {
+      const total = len.includes('/') ? len.split('/').pop() : len;
+      if (total) photo.size = parseInt(total, 10);
+    }
     if (exif.pixelXDimension && exif.pixelYDimension) {
       photo.width = exif.pixelXDimension;
       photo.height = exif.pixelYDimension;
     }
-  } catch (_) {}
+    photo.exifLoaded = true;
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
+  } finally {
+    photo.exifLoading = false;
+  }
 }
 
 let galleryInitialized = false;
@@ -907,6 +922,21 @@ function fmtAR(w, h) {
 }
 
 // ── LIGHTBOX ──────────────────────────────────────────────────
+let activeLbSession = 0;
+let exifAbortController = null;
+let fitLbFrame = 0;
+let resizeFitTimer = null;
+
+function cancelLbWork() {
+  exifAbortController?.abort();
+  exifAbortController = null;
+}
+
+function scheduleFitMobileLightboxPanel() {
+  cancelAnimationFrame(fitLbFrame);
+  fitLbFrame = requestAnimationFrame(fitMobileLightboxPanel);
+}
+
 function resetLightboxImageSize() {
   const img = document.getElementById('lbImg');
   img.style.width = '';
@@ -950,31 +980,52 @@ function fitMobileLightboxPanel() {
 }
 
 function openLb(i) {
+  cancelLbWork();
+  const session = ++activeLbSession;
+  exifAbortController = new AbortController();
+  const exifSignal = exifAbortController.signal;
+
   curIdx = i;
   const p = sorted[i];
   const img = document.getElementById('lbImg');
   resetLightboxImageSize();
+  img.onload = null;
+  img.onerror = null;
   img.style.opacity = '0';
-  img.src = p.src;
-  img.onload = () => {
+
+  document.getElementById('lb').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  renderLbMeta(i);
+
+  const onImageReady = () => {
+    if (session !== activeLbSession) return;
     img.style.opacity = '1';
     if (!p.width || !p.height) {
       p.width = img.naturalWidth;
       p.height = img.naturalHeight;
     }
-    requestAnimationFrame(fitMobileLightboxPanel);
+    scheduleFitMobileLightboxPanel();
   };
 
-  ensurePhotoExif(p).then(() => {
-    renderLbMeta(i);
-    requestAnimationFrame(fitMobileLightboxPanel);
-  });
+  img.onload = onImageReady;
+  img.onerror = onImageReady;
+  img.src = p.src;
+  if (img.complete && img.naturalWidth) onImageReady();
 
-  renderLbMeta(i);
-  requestAnimationFrame(fitMobileLightboxPanel);
+  const loadExif = () => {
+    if (session !== activeLbSession) return;
+    ensurePhotoExif(p, exifSignal).then(() => {
+      if (session !== activeLbSession || exifSignal.aborted) return;
+      renderLbMeta(i);
+      scheduleFitMobileLightboxPanel();
+    });
+  };
 
-  document.getElementById('lb').classList.add('open');
-  document.body.style.overflow = 'hidden';
+  if (window.innerWidth <= MOBILE_BREAKPOINT) {
+    setTimeout(loadExif, 400);
+  } else {
+    loadExif();
+  }
 }
 
 function renderLbMeta(i) {
@@ -1025,7 +1076,16 @@ function renderLbMeta(i) {
 }
 
 function closeLb() {
-  document.getElementById('lb').classList.remove('open');
+  cancelLbWork();
+  activeLbSession++;
+
+  const lb = document.getElementById('lb');
+  const img = document.getElementById('lbImg');
+  img.onload = null;
+  img.onerror = null;
+  img.src = '';
+
+  lb.classList.remove('open');
   document.body.style.overflow = '';
   resetLightboxImageSize();
 }
@@ -1053,7 +1113,8 @@ window.addEventListener('resize', () => {
     applyViewMode();
     updateViewButtons();
   }
-  fitMobileLightboxPanel();
+  clearTimeout(resizeFitTimer);
+  resizeFitTimer = setTimeout(scheduleFitMobileLightboxPanel, 120);
 });
 </script>
 </body>
