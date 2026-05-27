@@ -561,15 +561,11 @@ function folderThumbUrl(filename) {
   return `${folderPath()}/${THUMBS_FOLDER}/${encodeURIComponent(filename)}`;
 }
 
-function filenameSortKey(name) {
-  const base = name.replace(/\.[^.]+$/, '');
-  const m = base.match(/IMG_(\d+)/i);
-  return m ? parseInt(m[1], 10) : 0;
-}
-
 function buildPhotosFromManifest() {
-  const files = window.GALLERY_MANIFEST || [];
-  allPhotos = files.map(filename => {
+  const raw = window.GALLERY_MANIFEST || [];
+  allPhotos = raw.map(entry => {
+    const filename = typeof entry === 'string' ? entry : entry.file;
+    const takenMs = typeof entry === 'object' && entry.takenMs ? entry.takenMs : null;
     const ext = (filename.match(/\.([^.]+)$/) || ['', ''])[1].toUpperCase();
     const name = filename.replace(/\.[^.]+$/, '');
     return {
@@ -577,11 +573,10 @@ function buildPhotosFromManifest() {
       source: 'folder',
       name,
       ext,
-      sortKey: filenameSortKey(filename),
       size: 0,
       type: `image/${ext.toLowerCase()}`,
       lastModified: 0,
-      takenMs: null,
+      takenMs,
       src: folderImageUrl(filename),
       thumb: folderThumbUrl(filename),
       width: null,
@@ -598,12 +593,14 @@ function loadDefaultFolderImages() {
 }
 
 async function ensureManifestLoaded() {
-  if (window.GALLERY_MANIFEST?.length) return;
+  if (window.GALLERY_MANIFEST?.length) {
+    if (typeof window.GALLERY_MANIFEST[0] === 'object') return;
+  }
   try {
     const resp = await fetch(`${folderPath()}/manifest.json`);
     if (!resp.ok) return;
     const data = await resp.json();
-    window.GALLERY_MANIFEST = data.images || [];
+    window.GALLERY_MANIFEST = data.items || data.images || [];
   } catch (_) {}
 }
 
@@ -644,7 +641,7 @@ async function initGallery() {
 
 // ── SORT / RENDER ─────────────────────────────────────────────
 function getSortKey(p) {
-  return p.takenMs || p.sortKey || 0;
+  return p.takenMs || 0;
 }
 
 function getDate(p) {
