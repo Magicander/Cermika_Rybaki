@@ -226,9 +226,9 @@ main {
 .lb.open { opacity: 1; pointer-events: all; }
 .lb-bg {
   position: absolute; inset: 0;
-  background: rgba(0,0,0,0.88);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  background: rgba(8, 8, 8, 0.48);
+  backdrop-filter: blur(2px) saturate(0.85);
+  -webkit-backdrop-filter: blur(2px) saturate(0.85);
 }
 .lb-panel {
   position: relative;
@@ -363,14 +363,14 @@ main {
   .lb-panel {
     display: flex;
     flex-direction: column;
-    width: 100%;
-    max-width: 100%;
-    max-height: 100%;
+    width: fit-content;
+    max-width: calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-height: calc(100dvh - 36px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     height: auto;
     min-height: 0;
-    border-radius: 18px;
+    border-radius: 16px;
     border: 1px solid var(--line-strong);
-    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
     background: var(--bg-2);
     overflow: hidden;
     transform: translateY(14px) scale(0.96);
@@ -380,26 +380,29 @@ main {
   }
   .lb-meta { display: none; }
   .lb-img-side {
-    flex: 0 1 auto;
-    width: 100%;
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 100%;
     min-height: 0;
-    max-height: 58dvh;
     padding: 0;
-    background: #000;
+    background: transparent;
+    line-height: 0;
   }
   .lb-img-side img {
-    width: 100%;
-    max-width: 100%;
-    max-height: 58dvh;
-    object-fit: contain;
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
   }
   .lb-mobile-bar {
     display: block;
     flex: 0 0 auto;
     width: 100%;
-    padding: 14px 16px 16px;
+    padding: 12px 14px 14px;
     background: var(--bg-2);
     border-top: 1px solid var(--line);
+    line-height: normal;
   }
   .lb-mobile-name {
     font-family: 'DM Serif Display', serif;
@@ -904,10 +907,53 @@ function fmtAR(w, h) {
 }
 
 // ── LIGHTBOX ──────────────────────────────────────────────────
+function resetLightboxImageSize() {
+  const img = document.getElementById('lbImg');
+  img.style.width = '';
+  img.style.height = '';
+  img.style.maxWidth = '';
+  img.style.maxHeight = '';
+}
+
+function fitMobileLightboxPanel() {
+  if (window.innerWidth > MOBILE_BREAKPOINT) {
+    resetLightboxImageSize();
+    return;
+  }
+
+  const lb = document.getElementById('lb');
+  if (!lb.classList.contains('open')) return;
+
+  const img = document.getElementById('lbImg');
+  const metaBar = document.getElementById('lbMobileMeta');
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  if (!nw || !nh) return;
+
+  const marginX = 32;
+  const marginY = 36;
+  const maxW = window.innerWidth - marginX;
+  const metaH = metaBar.offsetHeight || 72;
+  const maxImgH = window.innerHeight - marginY - metaH;
+
+  let w = maxW;
+  let h = (w * nh) / nw;
+  if (h > maxImgH) {
+    h = maxImgH;
+    w = (h * nw) / nh;
+  }
+
+  img.style.width = Math.floor(w) + 'px';
+  img.style.height = Math.floor(h) + 'px';
+  img.style.maxWidth = 'none';
+  img.style.maxHeight = 'none';
+}
+
 function openLb(i) {
   curIdx = i;
   const p = sorted[i];
   const img = document.getElementById('lbImg');
+  resetLightboxImageSize();
   img.style.opacity = '0';
   img.src = p.src;
   img.onload = () => {
@@ -916,11 +962,16 @@ function openLb(i) {
       p.width = img.naturalWidth;
       p.height = img.naturalHeight;
     }
+    requestAnimationFrame(fitMobileLightboxPanel);
   };
 
-  ensurePhotoExif(p).then(() => renderLbMeta(i));
+  ensurePhotoExif(p).then(() => {
+    renderLbMeta(i);
+    requestAnimationFrame(fitMobileLightboxPanel);
+  });
 
   renderLbMeta(i);
+  requestAnimationFrame(fitMobileLightboxPanel);
 
   document.getElementById('lb').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -976,6 +1027,7 @@ function renderLbMeta(i) {
 function closeLb() {
   document.getElementById('lb').classList.remove('open');
   document.body.style.overflow = '';
+  resetLightboxImageSize();
 }
 function lbBgClick(e) {
   if (e.target === e.currentTarget || e.target.classList.contains('lb-bg')) closeLb();
@@ -996,10 +1048,12 @@ document.addEventListener('keydown', e => {
 window.addEventListener('load', () => initGallery());
 
 window.addEventListener('resize', () => {
-  if (viewModeManual) return;
-  viewMode = getDefaultViewMode();
-  applyViewMode();
-  updateViewButtons();
+  if (!viewModeManual) {
+    viewMode = getDefaultViewMode();
+    applyViewMode();
+    updateViewButtons();
+  }
+  fitMobileLightboxPanel();
 });
 </script>
 </body>
