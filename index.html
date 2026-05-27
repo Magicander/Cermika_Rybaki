@@ -233,10 +233,11 @@ main {
   z-index: 1;
   display: flex;
   gap: 1px;
-  width: 100%;
-  max-width: 1100px;
+  width: fit-content;
+  max-width: min(1100px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   max-height: calc(100dvh - 48px);
+  height: auto;
   border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--bg-2);
@@ -248,22 +249,22 @@ main {
 .lb.open .lb-panel { transform: translateY(0) scale(1); }
 
 .lb-img-side {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
-  background: #000;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   min-height: 0;
+  line-height: 0;
 }
 .lb-img-side img {
   display: block;
-  max-width: 100%;
-  max-height: calc(100vh - 48px);
-  max-height: calc(100dvh - 48px);
   width: auto;
   height: auto;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
   transition: opacity .22s;
 }
@@ -346,8 +347,10 @@ main {
 }
 
 @media (min-width: 681px) {
-  .lb-img-side { min-height: 320px; }
-  .lb-arrow.next { right: 304px; }
+  .lb-arrow.next {
+    right: auto;
+    left: calc(var(--lb-img-w, 400px) - 51px);
+  }
 }
 
 @media (max-width: 680px) {
@@ -932,51 +935,105 @@ function cancelLbWork() {
   exifAbortController = null;
 }
 
-function scheduleFitMobileLightboxPanel() {
+function scheduleFitLightboxPanel() {
   cancelAnimationFrame(fitLbFrame);
-  fitLbFrame = requestAnimationFrame(fitMobileLightboxPanel);
+  fitLbFrame = requestAnimationFrame(fitLightboxPanel);
 }
 
-function resetLightboxImageSize() {
+function resetLightboxLayout() {
   const img = document.getElementById('lbImg');
+  const panel = document.querySelector('.lb-panel');
+  const imgSide = document.querySelector('.lb-img-side');
+  const meta = document.getElementById('lbMeta');
   img.style.width = '';
   img.style.height = '';
   img.style.maxWidth = '';
   img.style.maxHeight = '';
+  panel.style.width = '';
+  panel.style.height = '';
+  panel.style.removeProperty('--lb-img-w');
+  panel.style.removeProperty('--lb-img-h');
+  imgSide.style.width = '';
+  imgSide.style.height = '';
+  meta.style.maxHeight = '';
 }
 
-function fitMobileLightboxPanel() {
-  if (window.innerWidth > MOBILE_BREAKPOINT) {
-    resetLightboxImageSize();
-    return;
-  }
+const DESKTOP_META_W = 288;
+const DESKTOP_PANEL_GAP = 1;
 
+function fitLightboxPanel() {
   const lb = document.getElementById('lb');
   if (!lb.classList.contains('open')) return;
 
   const img = document.getElementById('lbImg');
-  const metaBar = document.getElementById('lbMobileMeta');
+  const panel = document.querySelector('.lb-panel');
+  const imgSide = document.querySelector('.lb-img-side');
   const nw = img.naturalWidth;
   const nh = img.naturalHeight;
   if (!nw || !nh) return;
 
-  const marginX = 32;
-  const marginY = 36;
-  const maxW = window.innerWidth - marginX;
-  const metaH = metaBar.offsetHeight || 72;
-  const maxImgH = window.innerHeight - marginY - metaH;
+  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
 
-  let w = maxW;
+  if (isMobile) {
+    const metaBar = document.getElementById('lbMobileMeta');
+    const marginX = 32;
+    const marginY = 36;
+    const maxW = window.innerWidth - marginX;
+    const metaH = metaBar.offsetHeight || 72;
+    const maxImgH = window.innerHeight - marginY - metaH;
+
+    let w = maxW;
+    let h = (w * nh) / nw;
+    if (h > maxImgH) {
+      h = maxImgH;
+      w = (h * nw) / nh;
+    }
+
+    w = Math.floor(w);
+    h = Math.floor(h);
+
+    panel.style.width = '';
+    panel.style.height = '';
+    panel.style.removeProperty('--lb-img-w');
+    panel.style.removeProperty('--lb-img-h');
+    imgSide.style.width = '';
+    imgSide.style.height = '';
+
+    img.style.width = w + 'px';
+    img.style.height = h + 'px';
+    img.style.maxWidth = 'none';
+    img.style.maxHeight = 'none';
+    return;
+  }
+
+  const marginX = 48;
+  const marginY = 48;
+  const maxPanelW = Math.min(1100, window.innerWidth - marginX);
+  const maxPanelH = window.innerHeight - marginY;
+  const maxImgW = maxPanelW - DESKTOP_META_W - DESKTOP_PANEL_GAP;
+  const maxImgH = maxPanelH;
+
+  let w = maxImgW;
   let h = (w * nh) / nw;
   if (h > maxImgH) {
     h = maxImgH;
     w = (h * nw) / nh;
   }
 
-  img.style.width = Math.floor(w) + 'px';
-  img.style.height = Math.floor(h) + 'px';
+  w = Math.floor(w);
+  h = Math.floor(h);
+
+  img.style.width = w + 'px';
+  img.style.height = h + 'px';
   img.style.maxWidth = 'none';
   img.style.maxHeight = 'none';
+  imgSide.style.width = w + 'px';
+  imgSide.style.height = h + 'px';
+  panel.style.width = (w + DESKTOP_META_W + DESKTOP_PANEL_GAP) + 'px';
+  panel.style.height = h + 'px';
+  panel.style.setProperty('--lb-img-w', w + 'px');
+  panel.style.setProperty('--lb-img-h', h + 'px');
+  document.getElementById('lbMeta').style.maxHeight = h + 'px';
 }
 
 function openLb(i) {
@@ -988,7 +1045,7 @@ function openLb(i) {
   curIdx = i;
   const p = sorted[i];
   const img = document.getElementById('lbImg');
-  resetLightboxImageSize();
+  resetLightboxLayout();
   img.onload = null;
   img.onerror = null;
   img.style.opacity = '0';
@@ -1004,7 +1061,7 @@ function openLb(i) {
       p.width = img.naturalWidth;
       p.height = img.naturalHeight;
     }
-    scheduleFitMobileLightboxPanel();
+    scheduleFitLightboxPanel();
   };
 
   img.onload = onImageReady;
@@ -1017,7 +1074,7 @@ function openLb(i) {
     ensurePhotoExif(p, exifSignal).then(() => {
       if (session !== activeLbSession || exifSignal.aborted) return;
       renderLbMeta(i);
-      scheduleFitMobileLightboxPanel();
+      scheduleFitLightboxPanel();
     });
   };
 
@@ -1087,7 +1144,7 @@ function closeLb() {
 
   lb.classList.remove('open');
   document.body.style.overflow = '';
-  resetLightboxImageSize();
+  resetLightboxLayout();
 }
 function lbBgClick(e) {
   if (e.target === e.currentTarget || e.target.classList.contains('lb-bg')) closeLb();
@@ -1114,7 +1171,7 @@ window.addEventListener('resize', () => {
     updateViewButtons();
   }
   clearTimeout(resizeFitTimer);
-  resizeFitTimer = setTimeout(scheduleFitMobileLightboxPanel, 120);
+  resizeFitTimer = setTimeout(scheduleFitLightboxPanel, 120);
 });
 </script>
 </body>
