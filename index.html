@@ -128,6 +128,7 @@ main {
   header { padding: 0 16px; }
   .toolbar { padding: 14px 16px 12px; }
   main { padding: 16px 16px 60px; }
+  .card { animation: none; opacity: 1; }
   .lb-panel { flex-direction: column; }
   .lb-meta { display: none; }
   .lb-img-side {
@@ -400,11 +401,24 @@ main {
   </div>
 </div>
 
-<script src="Ceramika%20Rybaki/manifest.js"></script>
+<script src="Ceramika Rybaki/manifest.js"></script>
 <script>
 const DEFAULT_FOLDER = 'Ceramika Rybaki';
-const PAGE_SIZE = 50;
 const MOBILE_BREAKPOINT = 680;
+const DESKTOP_PAGE_SIZE = 50;
+const MOBILE_PAGE_SIZE = 20;
+
+function getPageSize() {
+  return window.innerWidth <= MOBILE_BREAKPOINT ? MOBILE_PAGE_SIZE : DESKTOP_PAGE_SIZE;
+}
+
+function getLazyRootMargin() {
+  return window.innerWidth <= MOBILE_BREAKPOINT ? '120px' : '300px';
+}
+
+function getMaxConcurrentLoads() {
+  return window.innerWidth <= MOBILE_BREAKPOINT ? 3 : 6;
+}
 
 // ── EXIF PARSER (pure JS, no libs) ───────────────────────────
 function readExif(arrayBuffer) {
@@ -513,8 +527,11 @@ let curIdx    = 0;
 let sortMode  = 'newest';
 let viewModeManual = false;
 let renderedCount = 0;
+let isLoadingMore = false;
 let loadMoreObserver = null;
 let lazyImgObserver = null;
+let activeImageLoads = 0;
+const imageLoadQueue = [];
 
 function getDefaultViewMode() {
   return window.innerWidth <= MOBILE_BREAKPOINT ? 1 : 3;
@@ -550,24 +567,62 @@ function folderImageUrl(filename) {
   return `${folderPath()}/${encodeURIComponent(filename)}`;
 }
 
+function pumpImageLoadQueue() {
+  while (activeImageLoads < getMaxConcurrentLoads() && imageLoadQueue.length) {
+    const img = imageLoadQueue.shift();
+    if (!img?.dataset?.src) continue;
+    activeImageLoads++;
+    const done = () => {
+      activeImageLoads--;
+      pumpImageLoadQueue();
+    };
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+    img.src = img.dataset.src;
+    img.removeAttribute('data-src');
+  }
+}
+
+function queueImageLoad(img) {
+  if (!img.dataset.src) return;
+  imageLoadQueue.push(img);
+  pumpImageLoadQueue();
+}
+
+function resetLazyObserver() {
+  lazyImgObserver?.disconnect();
+  lazyImgObserver = null;
+}
+
 function getLazyObserver() {
   if (lazyImgObserver) return lazyImgObserver;
   lazyImgObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
-      const img = entry.target;
-      if (img.dataset.src) {
-        img.src = img.dataset.src;
-        img.removeAttribute('data-src');
-      }
-      lazyImgObserver.unobserve(img);
+      queueImageLoad(entry.target);
+      lazyImgObserver.unobserve(entry.target);
     });
-  }, { rootMargin: '300px' });
+  }, { rootMargin: getLazyRootMargin() });
   return lazyImgObserver;
 }
 
 function observeLazyImg(img) {
-  getLazyObserver().observe(img);
+  if (img.dataset.src) getLazyObserver().observe(img);
+}
+
+function releaseOffscreenImages() {
+  const imgs = document.querySelectorAll('.card img');
+  const vh = window.innerHeight;
+  imgs.forEach(img => {
+    const rect = img.getBoundingClientRect();
+    const farAbove = rect.bottom < -vh * 1.5;
+    const farBelow = rect.top > vh * 2.5;
+    if ((farAbove || farBelow) && img.src && !img.dataset.src) {
+      img.dataset.src = img.src;
+      img.removeAttribute('src');
+      observeLazyImg(img);
+    }
+  });
 }
 
 function buildPhotosFromManifest() {
@@ -595,6 +650,16 @@ function buildPhotosFromManifest() {
 function loadDefaultFolderImages() {
   buildPhotosFromManifest();
   return Promise.resolve();
+}
+
+async function ensureManifestLoaded() {
+  if (window.GALLERY_MANIFEST?.length) return;
+  try {
+    const resp = await fetch(`${folderPath()}/manifest.json`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    window.GALLERY_MANIFEST = data.images || [];
+  } catch (_) {}
 }
 
 async function ensurePhotoExif(photo) {
@@ -626,10 +691,10 @@ async function initGallery() {
   galleryInitialized = true;
   applyViewMode();
   updateViewButtons();
+  await ensureManifestLoaded();
   await loadDefaultFolderImages();
   updateMeta();
   renderGrid(true);
-  setupInfiniteScroll();
 }
 
 // ── SORT / RENDER ─────────────────────────────────────────────
@@ -673,6 +738,7 @@ function appendCard(p, i, animate) {
   img.alt = p.name;
   img.decoding = 'async';
   img.loading = 'lazy';
+  img.fetchPriority = 'low';
 
   const hover = document.createElement('div');
   hover.className = 'card-hover';
@@ -720,9 +786,17 @@ function setupLoadMoreSentinel() {
 
   loadMoreObserver?.disconnect();
   loadMoreObserver = new IntersectionObserver(entries => {
-    if (entries.some(entry => entry.isIntersecting)) renderGrid(false);
-  }, { rootMargin: '500px' });
+    if (entries.some(entry => entry.isIntersecting)) loadMorePhotos();
+  }, { rootMargin: '400px' });
   loadMoreObserver.observe(sentinel);
+}
+
+function loadMorePhotos() {
+  if (isLoadingMore || renderedCount >= sorted.length) return;
+  isLoadingMore = true;
+  renderGrid(false);
+  releaseOffscreenImages();
+  isLoadingMore = false;
 }
 
 function renderGrid(reset = true) {
@@ -731,6 +805,7 @@ function renderGrid(reset = true) {
 
   if (!sorted.length) {
     loadMoreObserver?.disconnect();
+    resetLazyObserver();
     grid.innerHTML = `<div class="empty-state">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
         <rect x="3" y="3" width="18" height="18" rx="3"/>
@@ -745,27 +820,21 @@ function renderGrid(reset = true) {
 
   if (reset) {
     renderedCount = 0;
+    imageLoadQueue.length = 0;
+    activeImageLoads = 0;
+    resetLazyObserver();
     grid.innerHTML = '';
   } else {
     document.getElementById('loadMoreSentinel')?.remove();
     document.getElementById('loadStatus')?.remove();
   }
 
-  const end = Math.min(renderedCount + PAGE_SIZE, sorted.length);
+  const end = Math.min(renderedCount + getPageSize(), sorted.length);
   for (let i = renderedCount; i < end; i++) {
-    grid.appendChild(appendCard(sorted[i], i, reset && i < 12));
+    grid.appendChild(appendCard(sorted[i], i, reset && i < 8));
   }
   renderedCount = end;
   setupLoadMoreSentinel();
-}
-
-function setupInfiniteScroll() {
-  window.addEventListener('scroll', () => {
-    if (renderedCount >= sorted.length) return;
-    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 800) {
-      renderGrid(false);
-    }
-  }, { passive: true });
 }
 
 // ── FORMAT ────────────────────────────────────────────────────
